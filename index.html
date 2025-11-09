@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>🔬 Lab Access — ESPOL</title>
+  <meta name="description" content="Registro rápido de acceso a laboratorios ESPOL">
+  <style>
+    :root { --espol-blue: #003366; --espol-light: #F5F7FA; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--espol-light); color: #333; }
+    header { background: var(--espol-blue); color: white; text-align: center; padding: 16px; }
+    header h1 { font-weight: 600; font-size: 1.4rem; }
+    .container { max-width: 500px; margin: 20px auto; padding: 0 16px; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 24px; margin-bottom: 20px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    input, select, textarea, button { width: 100%; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; }
+    button { background: var(--espol-blue); color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:hover { background: #002244; }
+    .status { text-align: center; padding: 12px; border-radius: 8px; margin: 16px 0; font-weight: 500; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .lab-banner { background: #e3f2fd; color: var(--espol-blue); text-align: center; padding: 8px; border-radius: 8px; font-weight: 600; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <header><h1>🔬 Lab Access — ESPOL</h1></header>
+
+  <div class="container">
+    <div class="card">
+      <h2 style="text-align:center">🚪 Registro de acceso</h2>
+      <div id="labBanner" class="lab-banner" style="display:none"></div>
+
+      <form id="accessForm">
+        <input type="hidden" name="type" value="entry">
+        <div class="form-group">
+          <label for="lab">Laboratorio *</label>
+          <select name="lab" id="lab" required>
+            <option value="">Selecciona</option>
+            <option value="Síntesis">Síntesis</option>
+            <option value="Metalografía">Metalografía</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="name">Nombre completo *</label>
+          <input type="text" name="name" id="name" required placeholder="Ej: Juan Pérez">
+        </div>
+        <div class="form-group">
+          <label for="reason">Motivo *</label>
+          <textarea name="reason" id="reason" rows="3" required placeholder="Ej: Preparación de muestras"></textarea>
+        </div>
+        <button type="submit" id="submitBtn">✅ Registrar entrada</button>
+      </form>
+      <div id="status" style="display:none" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h3>🚪 Salida rápida</h3>
+      <form id="exitForm">
+        <div class="form-group">
+          <label for="exitId">ID de registro</label>
+          <input type="text" name="id" id="exitId" placeholder="Ej: LAB-20251109-0915">
+        </div>
+        <button type="submit">🚪 Registrar salida</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // 🔑 CONFIGURACIÓN — SOLO EDITA ESTAS 2 LÍNEAS
+    const SPREADSHEET_ID = "COLOCA_TU_ID_DE_GOOGLE_SHEET_AQUI"; // ← ¡CAMBIA ESTO!
+    const API_KEY = "COLOCA_TU_API_KEY_AQUI";                   // ← ¡CAMBIA ESTO!
+
+    const URL = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Registros%20Laboratorio:append?valueInputOption=USER_ENTERED&key=${API_KEY}`;
+
+    // Detectar laboratorio por QR
+    const urlParams = new URLSearchParams(window.location.search);
+    const labParam = urlParams.get('lab');
+    if (labParam) {
+      const labName = labParam === 'Sintesis' ? 'Síntesis' : 'Metalografía';
+      document.getElementById('labBanner').textContent = `🏷️ Laboratorio: ${labName}`;
+      document.getElementById('labBanner').style.display = 'block';
+      document.getElementById('lab').value = labName;
+    }
+
+    // Registrar entrada
+    document.getElementById('accessForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      const data = { values: [[
+        "LAB-" + new Date().toISOString().replace(/\D/g, '').slice(0,14),
+        document.getElementById('name').value,
+        document.getElementById('lab').value,
+        new Date().toISOString(),
+        "",
+        document.getElementById('reason').value
+      ]] };
+
+      try {
+        const res = await fetch(URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+          const r = await res.json();
+          const id = r.updates.updatedData.values[0][0];
+          status.className = 'status success';
+          status.textContent = `✅ ID: ${id}`;
+          status.style.display = 'block';
+          localStorage.setItem('lastEntryId', id);
+          this.reset();
+          setTimeout(() => { status.style.display = 'none'; btn.disabled = false; btn.textContent = '✅ Registrar entrada'; }, 3000);
+        } else throw new Error(`Error ${res.status}`);
+      } catch (err) {
+        status.className = 'status error';
+        status.textContent = `❌ ${err.message}`;
+        status.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '🔁 Reintentar';
+      }
+    });
+
+    // Registrar salida
+    document.getElementById('exitForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const id = document.getElementById('exitId').value || localStorage.getItem('lastEntryId');
+      if (!id) return alert('Ingresa tu ID');
+
+      try {
+        const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Registros%20Laboratorio?key=${API_KEY}`;
+        const res = await fetch(readUrl);
+        const d = await res.json();
+        const v = d.values || [];
+        const idCol = v[0]?.indexOf('ID') ?? -1;
+        const exitCol = v[0]?.indexOf('Salida') ?? -1;
+        if (idCol === -1 || exitCol === -1) throw new Error('Hoja: faltan columnas ID/Salida');
+
+        let row = -1;
+        for (let i = 1; i < v.length; i++) {
+          if (v[i][idCol] === id && !v[i][exitCol]) { row = i; break; }
+        }
+        if (row === -1) throw new Error('ID no encontrado');
+
+        const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Registros%20Laboratorio!F${row + 1}?valueInputOption=USER_ENTERED&key=${API_KEY}`;
+        await fetch(updateUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [[new Date().toISOString()]] })
+        });
+        alert('✅ Salida registrada');
+      } catch (err) {
+        alert(`❌ ${err.message}`);
+      }
+    });
+  </script>
+</body>
+</html>
